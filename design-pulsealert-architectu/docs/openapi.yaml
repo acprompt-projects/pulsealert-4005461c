@@ -1,0 +1,482 @@
+openapi: "3.0.3"
+info:
+  title: PulseAlert API
+  version: "1.0.0"
+  description: Webhook-based alerting microservice that receives health check events and routes notifications with configurable rules and escalation.
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Local development
+paths:
+  /alerts:
+    post:
+      summary: Ingest a health check alert
+      operationId: ingestAlert
+      tags: [Alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlertIngest"
+      responses:
+        "202":
+          description: Alert accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertReceipt"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /alerts/{alertId}:
+    get:
+      summary: Get alert by ID
+      operationId: getAlert
+      tags: [Alerts]
+      parameters:
+        - $ref: "#/components/parameters/AlertId"
+      responses:
+        "200":
+          description: Alert details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /rules:
+    get:
+      summary: List routing rules
+      operationId: listRules
+      tags: [Rules]
+      parameters:
+        - name: enabled
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Rule"
+    post:
+      summary: Create a routing rule
+      operationId: createRule
+      tags: [Rules]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleCreate"
+      responses:
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /rules/{ruleId}:
+    put:
+      summary: Update a routing rule
+      operationId: updateRule
+      tags: [Rules]
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleCreate"
+      responses:
+        "200":
+          description: Rule updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Delete a routing rule
+      operationId: deleteRule
+      tags: [Rules]
+      parameters:
+        - $ref: "#/components/parameters/RuleId"
+      responses:
+        "204":
+          description: Rule deleted
+  /channels:
+    get:
+      summary: List notification channels
+      operationId: listChannels
+      tags: [Channels]
+      responses:
+        "200":
+          description: List of channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Channel"
+    post:
+      summary: Create a notification channel
+      operationId: createChannel
+      tags: [Channels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChannelCreate"
+      responses:
+        "201":
+          description: Channel created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+  /channels/{channelId}:
+    delete:
+      summary: Delete a notification channel
+      operationId: deleteChannel
+      tags: [Channels]
+      parameters:
+        - $ref: "#/components/parameters/ChannelId"
+      responses:
+        "204":
+          description: Channel deleted
+  /channels/{channelId}/test:
+    post:
+      summary: Send a test notification to a channel
+      operationId: testChannel
+      tags: [Channels]
+      parameters:
+        - $ref: "#/components/parameters/ChannelId"
+      responses:
+        "200":
+          description: Test sent
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /escalations:
+    get:
+      summary: List escalation policies
+      operationId: listEscalations
+      tags: [Escalations]
+      responses:
+        "200":
+          description: List of policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EscalationPolicy"
+    post:
+      summary: Create an escalation policy
+      operationId: createEscalation
+      tags: [Escalations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EscalationPolicyCreate"
+      responses:
+        "201":
+          description: Policy created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationPolicy"
+  /health:
+    get:
+      summary: Service health check
+      operationId: healthCheck
+      tags: [System]
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+components:
+  parameters:
+    AlertId:
+      name: alertId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RuleId:
+      name: ruleId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ChannelId:
+      name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+  schemas:
+    AlertIngest:
+      type: object
+      required: [source, severity, summary]
+      properties:
+        source:
+          type: string
+          description: Originating monitor identifier
+          example: api-gateway-prod
+        severity:
+          type: string
+          enum: [critical, warning, info]
+        summary:
+          type: string
+          example: Response time exceeded 5000ms threshold
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            team: platform
+            region: us-east-1
+        metadata:
+          type: object
+          additionalProperties: true
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        source:
+          type: string
+        severity:
+          type: string
+          enum: [critical, warning, info]
+        summary:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          type: string
+          enum: [firing, acknowledged, resolved]
+        fingerprint:
+          type: string
+          description: Deduplication hash
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    AlertReceipt:
+      type: object
+      properties:
+        alertId:
+          type: string
+          format: uuid
+        fingerprint:
+          type: string
+        deduplicated:
+          type: boolean
+    RuleCreate:
+      type: object
+      required: [name, match, channels]
+      properties:
+        name:
+          type: string
+          example: Critical platform alerts
+        enabled:
+          type: boolean
+          default: true
+        match:
+          type: object
+          description: Label-matching conditions (all must match)
+          properties:
+            severity:
+              type: array
+              items:
+                type: string
+                enum: [critical, warning, info]
+            labels:
+              type: object
+              additionalProperties:
+                type: string
+        channels:
+          type: array
+          items:
+            type: string
+            format: uuid
+        escalationPolicyId:
+          type: string
+          format: uuid
+          nullable: true
+        cooldownMinutes:
+          type: integer
+          default: 5
+          description: Min gap between duplicate notifications
+    Rule:
+      allOf:
+        - $ref: "#/components/schemas/RuleCreate"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            createdAt:
+              type: string
+              format: date-time
+    ChannelCreate:
+      type: object
+      required: [name, type, config]
+      properties:
+        name:
+          type: string
+          example: Platform Slack
+        type:
+          type: string
+          enum: [slack, discord, email, webhook]
+        config:
+          oneOf:
+            - $ref: "#/components/schemas/SlackConfig"
+            - $ref: "#/components/schemas/DiscordConfig"
+            - $ref: "#/components/schemas/EmailConfig"
+            - $ref: "#/components/schemas/WebhookConfig"
+    Channel:
+      allOf:
+        - $ref: "#/components/schemas/ChannelCreate"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            createdAt:
+              type: string
+              format: date-time
+    SlackConfig:
+      type: object
+      required: [webhookUrl]
+      properties:
+        webhookUrl:
+          type: string
+          format: uri
+        channel:
+          type: string
+    DiscordConfig:
+      type: object
+      required: [webhookUrl]
+      properties:
+        webhookUrl:
+          type: string
+          format: uri
+    EmailConfig:
+      type: object
+      required: [recipients, smtpHost, smtpPort]
+      properties:
+        recipients:
+          type: array
+          items:
+            type: string
+            format: email
+        smtpHost:
+          type: string
+        smtpPort:
+          type: integer
+        smtpUser:
+          type: string
+        smtpPass:
+          type: string
+          format: password
+    WebhookConfig:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+        method:
+          type: string
+          enum: [POST, PUT]
+          default: POST
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        secret:
+          type: string
+          description: HMAC signing secret
+    EscalationPolicyCreate:
+      type: object
+      required: [name, steps]
+      properties:
+        name:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/EscalationStep"
+    EscalationPolicy:
+      allOf:
+        - $ref: "#/components/schemas/EscalationPolicyCreate"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+    EscalationStep:
+      type: object
+      required: [delayMinutes, channels]
+      properties:
+        delayMinutes:
+          type: integer
+          description: Wait before escalating if alert still firing
+        channels:
+          type: array
+          items:
+            type: string
+            format: uuid
+        repeat:
+          type: integer
+          default: 0
+          description: Times to repeat this step (0 = once)
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
